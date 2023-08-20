@@ -5,7 +5,6 @@ use crate::state::Config;
 
 #[cw_serde]
 pub struct InstantiateMsg {
-    pub count: i32,
     pub protocol_fee_destination: String,
     pub protocol_fee_bps: u64,
     pub subject_fee_bps: u64,
@@ -29,6 +28,8 @@ pub enum QueryMsg {
     Config {},
     #[returns(Coin)]
     BuyPrice { subject: String, amount: Uint128 },
+    #[returns(Coin)]
+    BuyPriceAfterFee { subject: String, amount: Uint128 },
 }
 
 // We define a custom struct for each query response

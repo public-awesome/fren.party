@@ -39,7 +39,6 @@ mod tests {
         let cw_template_id = app.store_code(contract_template());
 
         let msg = InstantiateMsg {
-            count: 1i32,
             protocol_fee_destination: todo!(),
             protocol_fee_bps: todo!(),
             subject_fee_bps: todo!(),

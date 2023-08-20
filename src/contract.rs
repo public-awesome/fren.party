@@ -4,6 +4,7 @@ use cosmwasm_std::{
     to_binary, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
 };
 use cw2::set_contract_version;
+use cw_utils::nonpayable;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, GetCountResponse, InstantiateMsg, QueryMsg};
@@ -22,6 +23,8 @@ pub fn instantiate(
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
+    nonpayable(&info)?;
+
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     let config = Config {
@@ -33,8 +36,7 @@ pub fn instantiate(
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
-        .add_attribute("owner", info.sender)
-        .add_attribute("count", msg.count.to_string()))
+        .add_attribute("owner", info.sender))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -53,7 +55,7 @@ pub fn execute(
 }
 
 pub mod execute {
-    use cosmwasm_std::{coins, ensure, BankMsg, StdError, Uint128};
+    use cosmwasm_std::{coins, ensure, BankMsg, Uint128};
     use cw_utils::must_pay;
     use sg_std::NATIVE_DENOM;
 
@@ -92,12 +94,14 @@ pub mod execute {
         let payment = must_pay(&info, NATIVE_DENOM)?;
 
         let supply = SHARES_SUPPLY
-            .may_load(deps.storage, subject.clone())
+            .may_load(deps.storage, subject.clone())?
             .unwrap_or_default();
 
         ensure!(
-            supply.unwrap().u128() > 0 || subject == info.sender,
-            StdError::generic_err("Subject must be the first to buy shares")
+            supply.u128() > 0 || subject == info.sender,
+            ContractError::NotSubject {
+                subject: subject.into()
+            }
         );
 
         let Config {
@@ -107,13 +111,18 @@ pub mod execute {
             ..
         } = CONFIG.load(deps.storage)?;
 
-        let price = Uint128::from(price(supply.unwrap().u128(), amount.u128()));
+        let price = Uint128::from(price(supply.u128(), amount.u128()));
+
         let protocol_fee = price * protocol_fee_percent;
         let subject_fee = price * subject_fee_percent;
 
+        let expected_payment = (price + protocol_fee + subject_fee).into();
         ensure!(
-            payment.u128() >= (price + protocol_fee + subject_fee).into(),
-            StdError::generic_err("Not enough funds sent")
+            payment.u128() >= expected_payment,
+            ContractError::NotEnoughFunds {
+                expected: expected_payment,
+                actual: payment.u128(),
+            }
         );
 
         SHARES_BALANCE.update(
@@ -128,6 +137,8 @@ pub mod execute {
             |supply| -> Result<_, ContractError> { Ok(supply.unwrap_or_default() + amount) },
         )?;
 
+        let mut res = Response::new();
+
         let protocol_fee_msg = BankMsg::Send {
             to_address: protocol_fee_destination.to_string(),
             amount: coins(protocol_fee.u128(), NATIVE_DENOM),
@@ -138,10 +149,13 @@ pub mod execute {
             amount: coins(subject_fee.u128(), NATIVE_DENOM),
         };
 
-        Ok(Response::new()
-            .add_attribute("action", "buy_shares")
-            .add_message(protocol_fee_msg)
-            .add_message(subject_fee_msg))
+        if !protocol_fee.is_zero() {
+            res = res
+                .add_message(protocol_fee_msg)
+                .add_message(subject_fee_msg);
+        }
+
+        Ok(res.add_attribute("action", "buy_shares"))
     }
 }
 
@@ -152,6 +166,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::Config {} => to_binary(&CONFIG.load(deps.storage)?),
         QueryMsg::BuyPrice { subject, amount } => {
             to_binary(&query::buy_price(deps, subject, amount)?)
+        }
+        QueryMsg::BuyPriceAfterFee { subject, amount } => {
+            to_binary(&query::buy_price_after_fee(deps, subject, amount)?)
         }
     }
 }
@@ -173,6 +190,31 @@ pub mod query {
         let supply = SHARES_SUPPLY.load(deps.storage, deps.api.addr_validate(&subject)?)?;
 
         Ok(coin(price(supply.u128(), amount.u128()), NATIVE_DENOM))
+    }
+
+    // function getBuyPriceAfterFee(address sharesSubject, uint256 amount) public view returns (uint256) {
+    //     uint256 price = getBuyPrice(sharesSubject, amount);
+    //     uint256 protocolFee = price * protocolFeePercent / 1 ether;
+    //     uint256 subjectFee = price * subjectFeePercent / 1 ether;
+    //     return price + protocolFee + subjectFee;
+    // }
+
+    pub fn buy_price_after_fee(deps: Deps, subject: String, amount: Uint128) -> StdResult<Coin> {
+        let Config {
+            protocol_fee_percent,
+            subject_fee_percent,
+            ..
+        } = CONFIG.load(deps.storage)?;
+
+        let price = buy_price(deps, subject, amount)?;
+
+        let protocol_fee = price.amount * protocol_fee_percent;
+        let subject_fee = price.amount * subject_fee_percent;
+
+        Ok(coin(
+            (price.amount + protocol_fee + subject_fee).into(),
+            NATIVE_DENOM,
+        ))
     }
 }
 
@@ -202,7 +244,7 @@ fn price(supply: u128, amount: u128) -> u128 {
 mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, from_binary};
+    use cosmwasm_std::{coins, from_binary, Uint128};
 
     // #[test]
     // fn invalid_supply() {
@@ -241,21 +283,18 @@ mod tests {
         let mut deps = mock_dependencies();
 
         let msg = InstantiateMsg {
-            count: 17,
-            protocol_fee_destination: todo!(),
-            protocol_fee_bps: todo!(),
-            subject_fee_bps: todo!(),
+            protocol_fee_destination: String::from("protocol_fee_destination"),
+            protocol_fee_bps: 500,
+            subject_fee_bps: 500,
         };
-        let info = mock_info("creator", &coins(1000, "earth"));
+        let info = mock_info("creator", &[]);
 
-        // we can just call .unwrap() to assert this was a success
         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
         assert_eq!(0, res.messages.len());
 
-        // it worked, let's query the state
-        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-        let value: GetCountResponse = from_binary(&res).unwrap();
-        assert_eq!(17, value.count);
+        let res = query(deps.as_ref(), mock_env(), QueryMsg::Config {}).unwrap();
+        let value: Config = from_binary(&res).unwrap();
+        assert_eq!(Decimal::bps(500), value.protocol_fee_percent);
     }
 
     #[test]
@@ -263,7 +302,6 @@ mod tests {
         let mut deps = mock_dependencies();
 
         let msg = InstantiateMsg {
-            count: 17,
             protocol_fee_destination: todo!(),
             protocol_fee_bps: todo!(),
             subject_fee_bps: todo!(),
@@ -283,11 +321,52 @@ mod tests {
     }
 
     #[test]
+    fn buy_shares() {
+        let mut deps = mock_dependencies();
+
+        let msg = InstantiateMsg {
+            protocol_fee_destination: String::from("protocol_fee_destination"),
+            protocol_fee_bps: 500,
+            subject_fee_bps: 500,
+        };
+        let subject = String::from("subject");
+
+        let info = mock_info(&subject, &[]);
+        let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        let info = mock_info("anyone", &coins(2, "ustars"));
+        let msg = ExecuteMsg::BuyShares {
+            subject: String::from("subject"),
+            amount: Uint128::from(1u128),
+        };
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::NotSubject {
+                subject: subject.clone()
+            }
+        );
+
+        let info = mock_info(&subject, &coins(2, "ustars"));
+        let msg = ExecuteMsg::BuyShares {
+            subject: String::from("subject"),
+            amount: Uint128::from(1u128),
+        };
+        let _res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        // TODO: check shares balance and supply
+
+        // // should increase counter by 1
+        // let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
+        // let value: GetCountResponse = from_binary(&res).unwrap();
+        // assert_eq!(18, value.count);
+    }
+
+    #[test]
     fn reset() {
         let mut deps = mock_dependencies();
 
         let msg = InstantiateMsg {
-            count: 17,
             protocol_fee_destination: todo!(),
             protocol_fee_bps: todo!(),
             subject_fee_bps: todo!(),
