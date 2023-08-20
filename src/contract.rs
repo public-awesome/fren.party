@@ -1,11 +1,13 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
+use cosmwasm_std::{
+    to_binary, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
+};
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, GetCountResponse, InstantiateMsg, QueryMsg};
-use crate::state::{State, STATE};
+use crate::state::{Config, CONFIG, STATE};
 
 use self::execute::buy_shares;
 
@@ -20,12 +22,14 @@ pub fn instantiate(
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
-    let state = State {
-        count: msg.count,
-        owner: info.sender.clone(),
-    };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-    STATE.save(deps.storage, &state)?;
+
+    let config = Config {
+        protocol_fee_destination: deps.api.addr_validate(&msg.protocol_fee_destination)?,
+        protocol_fee_percent: Decimal::bps(msg.protocol_fee_bps),
+        subject_fee_percent: Decimal::bps(msg.subject_fee_bps),
+    };
+    CONFIG.save(deps.storage, &config)?;
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
@@ -51,6 +55,7 @@ pub fn execute(
 pub mod execute {
     use cosmwasm_std::{coins, ensure, BankMsg, StdError, Uint128};
     use cw_utils::must_pay;
+    use sg_std::NATIVE_DENOM;
 
     use crate::state::{Config, CONFIG, SHARES_BALANCE, SHARES_SUPPLY};
 
@@ -84,7 +89,7 @@ pub mod execute {
     ) -> Result<Response, ContractError> {
         let subject = deps.api.addr_validate(&subject)?;
 
-        let payment = must_pay(&info, "ustars")?;
+        let payment = must_pay(&info, NATIVE_DENOM)?;
 
         let supply = SHARES_SUPPLY
             .may_load(deps.storage, subject.clone())
@@ -125,12 +130,12 @@ pub mod execute {
 
         let protocol_fee_msg = BankMsg::Send {
             to_address: protocol_fee_destination.to_string(),
-            amount: coins(protocol_fee.u128(), "ustars"),
+            amount: coins(protocol_fee.u128(), NATIVE_DENOM),
         };
 
         let subject_fee_msg = BankMsg::Send {
             to_address: subject.to_string(),
-            amount: coins(subject_fee.u128(), "ustars"),
+            amount: coins(subject_fee.u128(), NATIVE_DENOM),
         };
 
         Ok(Response::new()
@@ -220,7 +225,12 @@ mod tests {
     fn proper_initialization() {
         let mut deps = mock_dependencies();
 
-        let msg = InstantiateMsg { count: 17 };
+        let msg = InstantiateMsg {
+            count: 17,
+            protocol_fee_destination: todo!(),
+            protocol_fee_bps: todo!(),
+            subject_fee_bps: todo!(),
+        };
         let info = mock_info("creator", &coins(1000, "earth"));
 
         // we can just call .unwrap() to assert this was a success
@@ -237,7 +247,12 @@ mod tests {
     fn increment() {
         let mut deps = mock_dependencies();
 
-        let msg = InstantiateMsg { count: 17 };
+        let msg = InstantiateMsg {
+            count: 17,
+            protocol_fee_destination: todo!(),
+            protocol_fee_bps: todo!(),
+            subject_fee_bps: todo!(),
+        };
         let info = mock_info("creator", &coins(2, "token"));
         let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
@@ -256,7 +271,12 @@ mod tests {
     fn reset() {
         let mut deps = mock_dependencies();
 
-        let msg = InstantiateMsg { count: 17 };
+        let msg = InstantiateMsg {
+            count: 17,
+            protocol_fee_destination: todo!(),
+            protocol_fee_bps: todo!(),
+            subject_fee_bps: todo!(),
+        };
         let info = mock_info("creator", &coins(2, "token"));
         let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 

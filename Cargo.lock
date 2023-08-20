@@ -265,6 +265,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cw721"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3c4d286625ccadc957fe480dd3bdc54ada19e0e6b5b9325379db3130569e914"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-utils",
+ "schemars",
+ "serde",
+]
+
+[[package]]
 name = "der"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -660,6 +673,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "sg-std"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "171f97d3032b7d713dd16decaed06479e7ce5585147f387860ad2fb3f7b9ed94"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-utils",
+ "cw721",
+ "schemars",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "sha2"
 version = "0.9.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -696,6 +724,7 @@ dependencies = [
  "cw2",
  "schemars",
  "serde",
+ "sg-std",
  "thiserror",
 ]
 

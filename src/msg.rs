@@ -4,6 +4,9 @@ use cosmwasm_std::Uint128;
 #[cw_serde]
 pub struct InstantiateMsg {
     pub count: i32,
+    pub protocol_fee_destination: String,
+    pub protocol_fee_bps: u64,
+    pub subject_fee_bps: u64,
 }
 
 #[cw_serde]
