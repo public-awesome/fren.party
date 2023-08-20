@@ -211,6 +211,9 @@ pub mod query {
 
 // This first share can only be bought by the subject.
 // Price in STARS.
+//
+// NOTE: This can panic in debug mode if the supply and amount are both 0.
+// Panic will never occurr in production since the parameters are ensured to be valid.
 fn price(supply: u128, amount: u128) -> u128 {
     let sum1 = if supply == 0 {
         0
@@ -237,13 +240,14 @@ mod tests {
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{coins, from_binary, Uint128};
 
-    // #[test]
-    // fn invalid_supply() {
-    //     let supply = 0;
-    //     let amount = 0;
-    //     let price = execute::price(supply, amount);
-    //     assert_eq!(price, 0);
-    // }
+    #[test]
+    #[should_panic]
+    fn invalid_price_arguments() {
+        let supply = 0;
+        let amount = 0;
+        let price = price(supply, amount);
+        assert_eq!(price, 0);
+    }
 
     #[test]
     fn correct_price_for_first_share() {
@@ -322,11 +326,27 @@ mod tests {
         };
         let _res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
-        // TODO: check shares balance and supply
+        // the subject is the holder and should have 1 share
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::SharesBalance {
+                subject: subject.clone(),
+                holder: subject.clone(),
+            },
+        )
+        .unwrap();
+        let value: Uint128 = from_binary(&res).unwrap();
+        assert_eq!(Uint128::from(1u128), value);
 
-        // // should increase counter by 1
-        // let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-        // let value: GetCountResponse = from_binary(&res).unwrap();
-        // assert_eq!(18, value.count);
+        // the subject should also have a supply for 1 now
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::SharesSupply { subject },
+        )
+        .unwrap();
+        let value: Uint128 = from_binary(&res).unwrap();
+        assert_eq!(Uint128::from(1u128), value);
     }
 }
