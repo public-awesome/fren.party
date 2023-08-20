@@ -7,6 +7,8 @@ use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, GetCountResponse, InstantiateMsg, QueryMsg};
 use crate::state::{State, STATE};
 
+use self::execute::buy_shares;
+
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:shares";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -39,12 +41,19 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Increment {} => execute::increment(deps),
-        ExecuteMsg::Reset { count } => execute::reset(deps, info, count),
+        ExecuteMsg::Increment {} => todo!(),
+        ExecuteMsg::Reset { count } => todo!(),
+        ExecuteMsg::BuyShares { subject, amount } => buy_shares(deps, info, subject, amount),
+        ExecuteMsg::SellShares { subject, amount } => todo!(),
     }
 }
 
 pub mod execute {
+    use cosmwasm_std::{coins, ensure, BankMsg, StdError, Uint128};
+    use cw_utils::must_pay;
+
+    use crate::state::{Config, CONFIG, SHARES_BALANCE, SHARES_SUPPLY};
+
     use super::*;
 
     pub fn increment(deps: DepsMut) -> Result<Response, ContractError> {
@@ -65,6 +74,91 @@ pub mod execute {
             Ok(state)
         })?;
         Ok(Response::new().add_attribute("action", "reset"))
+    }
+
+    pub fn buy_shares(
+        deps: DepsMut,
+        info: MessageInfo,
+        subject: String,
+        amount: Uint128,
+    ) -> Result<Response, ContractError> {
+        let subject = deps.api.addr_validate(&subject)?;
+
+        let payment = must_pay(&info, "ustars")?;
+
+        let supply = SHARES_SUPPLY
+            .may_load(deps.storage, subject.clone())
+            .unwrap_or_default();
+
+        ensure!(
+            supply.unwrap().u128() > 0 || subject == info.sender,
+            StdError::generic_err("Subject must be the first to buy shares")
+        );
+
+        let Config {
+            protocol_fee_destination,
+            protocol_fee_percent,
+            subject_fee_percent,
+            ..
+        } = CONFIG.load(deps.storage)?;
+
+        let price = Uint128::from(price(supply.unwrap().u128(), amount.u128()));
+        let protocol_fee = price * protocol_fee_percent;
+        let subject_fee = price * subject_fee_percent;
+
+        ensure!(
+            payment.u128() >= (price + protocol_fee + subject_fee).into(),
+            StdError::generic_err("Not enough funds sent")
+        );
+
+        SHARES_BALANCE.update(
+            deps.storage,
+            (subject.clone(), info.sender),
+            |balance| -> Result<_, ContractError> { Ok(balance.unwrap_or_default() + amount) },
+        )?;
+
+        SHARES_SUPPLY.update(
+            deps.storage,
+            subject.clone(),
+            |supply| -> Result<_, ContractError> { Ok(supply.unwrap_or_default() + amount) },
+        )?;
+
+        let protocol_fee_msg = BankMsg::Send {
+            to_address: protocol_fee_destination.to_string(),
+            amount: coins(protocol_fee.u128(), "ustars"),
+        };
+
+        let subject_fee_msg = BankMsg::Send {
+            to_address: subject.to_string(),
+            amount: coins(subject_fee.u128(), "ustars"),
+        };
+
+        Ok(Response::new()
+            .add_attribute("action", "buy_shares")
+            .add_message(protocol_fee_msg)
+            .add_message(subject_fee_msg))
+    }
+
+    // This first share can only be bought by the subject.
+    // Price in STARS.
+    pub fn price(supply: u128, amount: u128) -> u128 {
+        let sum1 = if supply == 0 {
+            0
+        } else {
+            (supply - 1) * (supply) * (2 * (supply - 1) + 1) / 6
+        };
+
+        let sum2 = if supply == 0 && amount == 1 {
+            0
+        } else {
+            (supply - 1 + amount) * (supply + amount) * (2 * (supply - 1 + amount) + 1) / 6
+        };
+
+        // TODO: what is this doing?
+        let summation = sum2 - sum1;
+        let ether = 10u128.pow(18);
+
+        (summation * ether) / 16000
     }
 }
 
@@ -89,6 +183,30 @@ mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{coins, from_binary};
+
+    // #[test]
+    // fn invalid_supply() {
+    //     let supply = 0;
+    //     let amount = 0;
+    //     let price = execute::price(supply, amount);
+    //     assert_eq!(price, 0);
+    // }
+
+    #[test]
+    fn correct_price_for_first_share() {
+        let supply = 0;
+        let amount = 1;
+        let price = execute::price(supply, amount);
+        assert_eq!(price, 0);
+    }
+
+    #[test]
+    fn correct_price_for_second_share() {
+        let supply = 1;
+        let amount = 1;
+        let price = execute::price(supply, amount);
+        assert_eq!(price, 0);
+    }
 
     #[test]
     fn proper_initialization() {
