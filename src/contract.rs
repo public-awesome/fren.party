@@ -1,16 +1,18 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
+    coins, to_binary, Binary, Coin, Coins, Decimal, Deps, DepsMut, Env, MessageInfo, Response,
+    StdResult, Uint128,
 };
 use cw2::set_contract_version;
 use cw_utils::nonpayable;
+use sg_std::NATIVE_DENOM;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{Config, CONFIG};
 
-use self::execute::buy_shares;
+use self::execute::{buy_shares, sell_shares};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:shares";
@@ -48,12 +50,14 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::BuyShares { subject, amount } => buy_shares(deps, info, subject, amount),
-        ExecuteMsg::SellShares { subject, amount } => todo!(),
+        ExecuteMsg::SellShares { subject, amount } => {
+            sell_shares(deps, info, subject, amount.into())
+        }
     }
 }
 
 pub mod execute {
-    use cosmwasm_std::{coins, ensure, BankMsg, Uint128};
+    use cosmwasm_std::{ensure, BankMsg, Uint128};
     use cw_utils::must_pay;
     use sg_std::NATIVE_DENOM;
 
@@ -69,14 +73,15 @@ pub mod execute {
     ) -> Result<Response, ContractError> {
         let subject = deps.api.addr_validate(&subject)?;
 
-        let payment = must_pay(&info, NATIVE_DENOM)?;
+        let payment = must_pay(&info, NATIVE_DENOM)?.u128();
 
         let supply = SHARES_SUPPLY
             .may_load(deps.storage, subject.clone())?
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .u128();
 
         ensure!(
-            supply.u128() > 0 || subject == info.sender,
+            supply > 0 || subject == info.sender,
             ContractError::NotSubject {
                 subject: subject.into()
             }
@@ -89,17 +94,17 @@ pub mod execute {
             ..
         } = CONFIG.load(deps.storage)?;
 
-        let price = Uint128::from(price(supply.u128(), amount.u128()));
+        let price: Uint128 = price(supply, amount.u128()).into();
 
         let protocol_fee = price * protocol_fee_percent;
         let subject_fee = price * subject_fee_percent;
 
         let expected_payment = (price + protocol_fee + subject_fee).into();
         ensure!(
-            payment.u128() >= expected_payment,
+            payment >= expected_payment,
             ContractError::NotEnoughFunds {
                 expected: expected_payment,
-                actual: payment.u128(),
+                actual: payment,
             }
         );
 
@@ -119,12 +124,12 @@ pub mod execute {
 
         let protocol_fee_msg = BankMsg::Send {
             to_address: protocol_fee_destination.to_string(),
-            amount: coins(protocol_fee.u128(), NATIVE_DENOM),
+            amount: stars(protocol_fee),
         };
 
         let subject_fee_msg = BankMsg::Send {
             to_address: subject.to_string(),
-            amount: coins(subject_fee.u128(), NATIVE_DENOM),
+            amount: stars(subject_fee),
         };
 
         if !protocol_fee.is_zero() {
@@ -134,6 +139,77 @@ pub mod execute {
         }
 
         Ok(res.add_attribute("action", "buy_shares"))
+    }
+
+    pub fn sell_shares(
+        deps: DepsMut,
+        info: MessageInfo,
+        subject: String,
+        amount: u128,
+    ) -> Result<Response, ContractError> {
+        let subject = deps.api.addr_validate(&subject)?;
+
+        let supply = SHARES_SUPPLY
+            .may_load(deps.storage, subject.clone())?
+            .unwrap_or_default()
+            .u128();
+
+        ensure!(supply > amount, ContractError::LastShare {});
+
+        let Config {
+            protocol_fee_destination,
+            protocol_fee_percent,
+            subject_fee_percent,
+            ..
+        } = CONFIG.load(deps.storage)?;
+
+        let price = Uint128::from(price(supply - amount, amount));
+
+        let protocol_fee = price * protocol_fee_percent;
+        let subject_fee = price * subject_fee_percent;
+
+        ensure!(
+            SHARES_BALANCE.load(
+                deps.as_ref().storage,
+                (subject.clone(), info.sender.clone()),
+            )? >= amount.into(),
+            ContractError::NotEnoughShares {}
+        );
+
+        SHARES_BALANCE.update(
+            deps.storage,
+            (subject.clone(), info.sender.clone()),
+            |balance| -> Result<_, ContractError> {
+                Ok(balance.unwrap_or_default() - Uint128::from(amount))
+            },
+        )?;
+
+        SHARES_SUPPLY.update(
+            deps.storage,
+            subject.clone(),
+            |supply| -> Result<_, ContractError> {
+                Ok(supply.unwrap_or_default() - Uint128::from(amount))
+            },
+        )?;
+
+        let sender_fee_msg = BankMsg::Send {
+            to_address: info.sender.to_string(),
+            amount: stars(price - protocol_fee - subject_fee),
+        };
+
+        let protocol_fee_msg = BankMsg::Send {
+            to_address: protocol_fee_destination.to_string(),
+            amount: stars(protocol_fee),
+        };
+
+        let subject_fee_msg = BankMsg::Send {
+            to_address: subject.to_string(),
+            amount: stars(subject_fee),
+        };
+
+        Ok(Response::new()
+            .add_attribute("action", "sell_shares")
+            .add_messages(vec![sender_fee_msg, protocol_fee_msg, subject_fee_msg]))
     }
 }
 
@@ -234,11 +310,15 @@ fn price(supply: u128, amount: u128) -> u128 {
     (summation * star) / 8
 }
 
+fn stars(amount: impl Into<u128>) -> Vec<Coin> {
+    coins(amount.into(), NATIVE_DENOM)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, from_binary, Uint128};
+    use cosmwasm_std::{coins, from_binary, BankMsg, CosmosMsg, Uint128};
 
     #[test]
     #[should_panic]
@@ -306,7 +386,7 @@ mod tests {
         let info = mock_info(&subject, &[]);
         let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
-        let info = mock_info("anyone", &coins(2, "ustars"));
+        let info = mock_info("anyone", &stars(2u128));
         let msg = ExecuteMsg::BuyShares {
             subject: String::from("subject"),
             amount: Uint128::from(1u128),
@@ -319,7 +399,7 @@ mod tests {
             }
         );
 
-        let info = mock_info(&subject, &coins(2, "ustars"));
+        let info = mock_info(&subject, &stars(2u128));
         let msg = ExecuteMsg::BuyShares {
             subject: String::from("subject"),
             amount: Uint128::from(1u128),
@@ -348,5 +428,21 @@ mod tests {
         .unwrap();
         let value: Uint128 = from_binary(&res).unwrap();
         assert_eq!(Uint128::from(1u128), value);
+
+        let friend = String::from("friend");
+        let info = mock_info(&friend, &stars(52_937_500u128));
+        let msg = ExecuteMsg::BuyShares {
+            subject: String::from("subject"),
+            amount: Uint128::from(10u128),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+        assert_eq!(2, res.messages.len());
+        assert_eq!(
+            CosmosMsg::Bank(BankMsg::Send {
+                to_address: String::from("protocol_fee_destination"),
+                amount: stars(2_406_250u128)
+            }),
+            res.messages[0].msg
+        )
     }
 }

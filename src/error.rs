@@ -13,6 +13,12 @@ pub enum ContractError {
     #[error("subject must be the first to buy shares: {subject:?}")]
     NotSubject { subject: String },
 
+    #[error("cannot sell last share")]
+    LastShare {},
+
+    #[error("not enough shares")]
+    NotEnoughShares {},
+
     #[error("not enough funds: {expected} got {actual}")]
     NotEnoughFunds { expected: u128, actual: u128 },
 
