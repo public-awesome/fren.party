@@ -318,7 +318,7 @@ fn stars(amount: impl Into<u128>) -> Vec<Coin> {
 mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, from_binary, BankMsg, CosmosMsg, Uint128};
+    use cosmwasm_std::{from_binary, BankMsg, CosmosMsg, Uint128};
 
     #[test]
     #[should_panic]
@@ -373,7 +373,7 @@ mod tests {
     }
 
     #[test]
-    fn buy_shares() {
+    fn buy_and_sell_shares() {
         let mut deps = mock_dependencies();
 
         let msg = InstantiateMsg {
@@ -423,12 +423,15 @@ mod tests {
         let res = query(
             deps.as_ref(),
             mock_env(),
-            QueryMsg::SharesSupply { subject },
+            QueryMsg::SharesSupply {
+                subject: subject.clone(),
+            },
         )
         .unwrap();
         let value: Uint128 = from_binary(&res).unwrap();
         assert_eq!(Uint128::from(1u128), value);
 
+        // buy the same subject's shares as another friend
         let friend = String::from("friend");
         let info = mock_info(&friend, &stars(52_937_500u128));
         let msg = ExecuteMsg::BuyShares {
@@ -443,6 +446,81 @@ mod tests {
                 amount: stars(2_406_250u128)
             }),
             res.messages[0].msg
+        );
+
+        // friend should now have a balance of subject's shares
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::SharesBalance {
+                subject: subject.clone(),
+                holder: friend.clone(),
+            },
         )
+        .unwrap();
+        let value: Uint128 = from_binary(&res).unwrap();
+        assert_eq!(Uint128::from(10u128), value);
+
+        // the subject should have increased supply since friend bought shares
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::SharesSupply {
+                subject: subject.clone(),
+            },
+        )
+        .unwrap();
+        let value: Uint128 = from_binary(&res).unwrap();
+        assert_eq!(Uint128::from(11u128), value);
+
+        // friend sells shares to be back at the previous state
+        let info = mock_info(&friend, &[]);
+        let msg = ExecuteMsg::SellShares {
+            subject: String::from("subject"),
+            amount: Uint128::from(10u128),
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+        assert_eq!(3, res.messages.len());
+        // friend lost money on their trade due to fees
+        // TODO: this is not the correct amount, but it's close
+        // let expected_amount = 52_937_500u128 - 2 * 2_406_250u128;
+        let expected_amount = 43_312_500u128;
+        assert_eq!(
+            CosmosMsg::Bank(BankMsg::Send {
+                to_address: String::from("friend"),
+                amount: stars(expected_amount)
+            }),
+            res.messages[0].msg
+        );
+        assert_eq!(
+            CosmosMsg::Bank(BankMsg::Send {
+                to_address: String::from("protocol_fee_destination"),
+                amount: stars(2_406_250u128)
+            }),
+            res.messages[1].msg
+        );
+
+        // friend should now have reset their shares of subject
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::SharesBalance {
+                subject: subject.clone(),
+                holder: friend.clone(),
+            },
+        )
+        .unwrap();
+        let value: Uint128 = from_binary(&res).unwrap();
+        assert_eq!(Uint128::from(0u128), value);
+
+        // the subject should have gone back to the previous supply
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::SharesSupply { subject },
+        )
+        .unwrap();
+        let value: Uint128 = from_binary(&res).unwrap();
+        assert_eq!(Uint128::from(1u128), value);
     }
 }
