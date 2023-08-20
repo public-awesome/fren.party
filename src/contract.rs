@@ -154,11 +154,11 @@ pub mod execute {
             (supply - 1 + amount) * (supply + amount) * (2 * (supply - 1 + amount) + 1) / 6
         };
 
-        // TODO: what is this doing?
         let summation = sum2 - sum1;
-        let ether = 10u128.pow(18);
+        println!("Summation: {summation}");
 
-        (summation * ether) / 16000
+        let star = 1_000_000;
+        (summation * star) / 8
     }
 }
 
@@ -205,7 +205,15 @@ mod tests {
         let supply = 1;
         let amount = 1;
         let price = execute::price(supply, amount);
-        assert_eq!(price, 0);
+        assert_eq!(price, 125_000);
+    }
+
+    #[test]
+    fn correct_price_for_third_share() {
+        let supply = 2;
+        let amount = 3;
+        let price = execute::price(supply, amount);
+        assert_eq!(price, 3_625_000);
     }
 
     #[test]
