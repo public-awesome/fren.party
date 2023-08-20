@@ -7,8 +7,8 @@ use cw2::set_contract_version;
 use cw_utils::nonpayable;
 
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, GetCountResponse, InstantiateMsg, QueryMsg};
-use crate::state::{Config, CONFIG, STATE};
+use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use crate::state::{Config, CONFIG};
 
 use self::execute::buy_shares;
 
@@ -47,8 +47,6 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Increment {} => todo!(),
-        ExecuteMsg::Reset { count } => todo!(),
         ExecuteMsg::BuyShares { subject, amount } => buy_shares(deps, info, subject, amount),
         ExecuteMsg::SellShares { subject, amount } => todo!(),
     }
@@ -62,26 +60,6 @@ pub mod execute {
     use crate::state::{Config, CONFIG, SHARES_BALANCE, SHARES_SUPPLY};
 
     use super::*;
-
-    pub fn increment(deps: DepsMut) -> Result<Response, ContractError> {
-        STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-            state.count += 1;
-            Ok(state)
-        })?;
-
-        Ok(Response::new().add_attribute("action", "increment"))
-    }
-
-    pub fn reset(deps: DepsMut, info: MessageInfo, count: i32) -> Result<Response, ContractError> {
-        STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-            if info.sender != state.owner {
-                return Err(ContractError::Unauthorized {});
-            }
-            state.count = count;
-            Ok(state)
-        })?;
-        Ok(Response::new().add_attribute("action", "reset"))
-    }
 
     pub fn buy_shares(
         deps: DepsMut,
@@ -162,8 +140,11 @@ pub mod execute {
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetCount {} => to_binary(&query::count(deps)?),
         QueryMsg::Config {} => to_binary(&CONFIG.load(deps.storage)?),
+        QueryMsg::SharesBalance { subject, holder } => {
+            to_binary(&query::shares_balance(deps, subject, holder)?)
+        }
+        QueryMsg::SharesSupply { subject } => to_binary(&query::shares_supply(deps, subject)?),
         QueryMsg::BuyPrice { subject, amount } => {
             to_binary(&query::buy_price(deps, subject, amount)?)
         }
@@ -177,13 +158,30 @@ pub mod query {
     use cosmwasm_std::{coin, Coin, Uint128};
     use sg_std::NATIVE_DENOM;
 
-    use crate::state::SHARES_SUPPLY;
+    use crate::state::{SHARES_BALANCE, SHARES_SUPPLY};
 
     use super::*;
 
-    pub fn count(deps: Deps) -> StdResult<GetCountResponse> {
-        let state = STATE.load(deps.storage)?;
-        Ok(GetCountResponse { count: state.count })
+    pub fn shares_balance(deps: Deps, subject: String, holder: String) -> StdResult<Uint128> {
+        let balance = SHARES_BALANCE
+            .may_load(
+                deps.storage,
+                (
+                    deps.api.addr_validate(&subject)?,
+                    deps.api.addr_validate(&holder)?,
+                ),
+            )?
+            .unwrap_or_default();
+
+        Ok(balance)
+    }
+
+    pub fn shares_supply(deps: Deps, subject: String) -> StdResult<Uint128> {
+        let supply = SHARES_SUPPLY
+            .may_load(deps.storage, deps.api.addr_validate(&subject)?)?
+            .unwrap_or_default();
+
+        Ok(supply)
     }
 
     pub fn buy_price(deps: Deps, subject: String, amount: Uint128) -> StdResult<Coin> {
@@ -191,13 +189,6 @@ pub mod query {
 
         Ok(coin(price(supply.u128(), amount.u128()), NATIVE_DENOM))
     }
-
-    // function getBuyPriceAfterFee(address sharesSubject, uint256 amount) public view returns (uint256) {
-    //     uint256 price = getBuyPrice(sharesSubject, amount);
-    //     uint256 protocolFee = price * protocolFeePercent / 1 ether;
-    //     uint256 subjectFee = price * subjectFeePercent / 1 ether;
-    //     return price + protocolFee + subjectFee;
-    // }
 
     pub fn buy_price_after_fee(deps: Deps, subject: String, amount: Uint128) -> StdResult<Coin> {
         let Config {
@@ -298,29 +289,6 @@ mod tests {
     }
 
     #[test]
-    fn increment() {
-        let mut deps = mock_dependencies();
-
-        let msg = InstantiateMsg {
-            protocol_fee_destination: todo!(),
-            protocol_fee_bps: todo!(),
-            subject_fee_bps: todo!(),
-        };
-        let info = mock_info("creator", &coins(2, "token"));
-        let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-        // beneficiary can release it
-        let info = mock_info("anyone", &coins(2, "token"));
-        let msg = ExecuteMsg::Increment {};
-        let _res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-        // should increase counter by 1
-        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-        let value: GetCountResponse = from_binary(&res).unwrap();
-        assert_eq!(18, value.count);
-    }
-
-    #[test]
     fn buy_shares() {
         let mut deps = mock_dependencies();
 
@@ -360,37 +328,5 @@ mod tests {
         // let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
         // let value: GetCountResponse = from_binary(&res).unwrap();
         // assert_eq!(18, value.count);
-    }
-
-    #[test]
-    fn reset() {
-        let mut deps = mock_dependencies();
-
-        let msg = InstantiateMsg {
-            protocol_fee_destination: todo!(),
-            protocol_fee_bps: todo!(),
-            subject_fee_bps: todo!(),
-        };
-        let info = mock_info("creator", &coins(2, "token"));
-        let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-        // beneficiary can release it
-        let unauth_info = mock_info("anyone", &coins(2, "token"));
-        let msg = ExecuteMsg::Reset { count: 5 };
-        let res = execute(deps.as_mut(), mock_env(), unauth_info, msg);
-        match res {
-            Err(ContractError::Unauthorized {}) => {}
-            _ => panic!("Must return unauthorized error"),
-        }
-
-        // only the original creator can reset the counter
-        let auth_info = mock_info("creator", &coins(2, "token"));
-        let msg = ExecuteMsg::Reset { count: 5 };
-        let _res = execute(deps.as_mut(), mock_env(), auth_info, msg).unwrap();
-
-        // should now be 5
-        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-        let value: GetCountResponse = from_binary(&res).unwrap();
-        assert_eq!(5, value.count);
     }
 }

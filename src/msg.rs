@@ -12,8 +12,6 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    Increment {},
-    Reset { count: i32 },
     BuyShares { subject: String, amount: Uint128 },
     SellShares { subject: String, amount: Uint128 },
 }
@@ -21,19 +19,14 @@ pub enum ExecuteMsg {
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
-    // GetCount returns the current count as a json-encoded number
-    #[returns(GetCountResponse)]
-    GetCount {},
     #[returns(Config)]
     Config {},
+    #[returns(Uint128)]
+    SharesBalance { subject: String, holder: String },
+    #[returns(Uint128)]
+    SharesSupply { subject: String },
     #[returns(Coin)]
     BuyPrice { subject: String, amount: Uint128 },
     #[returns(Coin)]
     BuyPriceAfterFee { subject: String, amount: Uint128 },
-}
-
-// We define a custom struct for each query response
-#[cw_serde]
-pub struct GetCountResponse {
-    pub count: i32,
 }
