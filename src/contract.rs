@@ -143,44 +143,59 @@ pub mod execute {
             .add_message(protocol_fee_msg)
             .add_message(subject_fee_msg))
     }
-
-    // This first share can only be bought by the subject.
-    // Price in STARS.
-    pub fn price(supply: u128, amount: u128) -> u128 {
-        let sum1 = if supply == 0 {
-            0
-        } else {
-            (supply - 1) * (supply) * (2 * (supply - 1) + 1) / 6
-        };
-
-        let sum2 = if supply == 0 && amount == 1 {
-            0
-        } else {
-            (supply - 1 + amount) * (supply + amount) * (2 * (supply - 1 + amount) + 1) / 6
-        };
-
-        let summation = sum2 - sum1;
-        println!("Summation: {summation}");
-
-        let star = 1_000_000;
-        (summation * star) / 8
-    }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetCount {} => to_binary(&query::count(deps)?),
+        QueryMsg::Config {} => to_binary(&CONFIG.load(deps.storage)?),
+        QueryMsg::BuyPrice { subject, amount } => {
+            to_binary(&query::buy_price(deps, subject, amount)?)
+        }
     }
 }
 
 pub mod query {
+    use cosmwasm_std::{coin, Coin, Uint128};
+    use sg_std::NATIVE_DENOM;
+
+    use crate::state::SHARES_SUPPLY;
+
     use super::*;
 
     pub fn count(deps: Deps) -> StdResult<GetCountResponse> {
         let state = STATE.load(deps.storage)?;
         Ok(GetCountResponse { count: state.count })
     }
+
+    pub fn buy_price(deps: Deps, subject: String, amount: Uint128) -> StdResult<Coin> {
+        let supply = SHARES_SUPPLY.load(deps.storage, deps.api.addr_validate(&subject)?)?;
+
+        Ok(coin(price(supply.u128(), amount.u128()), NATIVE_DENOM))
+    }
+}
+
+// This first share can only be bought by the subject.
+// Price in STARS.
+fn price(supply: u128, amount: u128) -> u128 {
+    let sum1 = if supply == 0 {
+        0
+    } else {
+        (supply - 1) * (supply) * (2 * (supply - 1) + 1) / 6
+    };
+
+    let sum2 = if supply == 0 && amount == 1 {
+        0
+    } else {
+        (supply - 1 + amount) * (supply + amount) * (2 * (supply - 1 + amount) + 1) / 6
+    };
+
+    let summation = sum2 - sum1;
+    println!("Summation: {summation}");
+
+    let star = 1_000_000;
+    (summation * star) / 8
 }
 
 #[cfg(test)]
@@ -201,7 +216,7 @@ mod tests {
     fn correct_price_for_first_share() {
         let supply = 0;
         let amount = 1;
-        let price = execute::price(supply, amount);
+        let price = price(supply, amount);
         assert_eq!(price, 0);
     }
 
@@ -209,7 +224,7 @@ mod tests {
     fn correct_price_for_second_share() {
         let supply = 1;
         let amount = 1;
-        let price = execute::price(supply, amount);
+        let price = price(supply, amount);
         assert_eq!(price, 125_000);
     }
 
@@ -217,7 +232,7 @@ mod tests {
     fn correct_price_for_third_share() {
         let supply = 2;
         let amount = 3;
-        let price = execute::price(supply, amount);
+        let price = price(supply, amount);
         assert_eq!(price, 3_625_000);
     }
 
