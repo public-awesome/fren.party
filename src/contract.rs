@@ -349,9 +349,8 @@ fn price(supply: impl Into<u128>, amount: impl Into<u128>, coefficient: Decimal)
     };
 
     let summation = sum2 - sum1;
-    println!("Summation: {summation}");
-
     let star = 1_000_000u128;
+
     Uint128::from(summation * star) * coefficient
 }
 
@@ -365,53 +364,52 @@ mod tests {
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{from_binary, BankMsg, CosmosMsg, Uint128};
 
+    fn coefficient() -> Decimal {
+        Decimal::from_ratio(1u128, 8u128)
+    }
+
     #[test]
     #[should_panic]
     fn invalid_price_arguments() {
-        let coefficient = Decimal::from_ratio(1u128, 8u128);
         let supply = 0u128;
         let amount = 0u128;
-        let price = price(supply, amount, coefficient).u128();
+        let price = price(supply, amount, coefficient()).u128();
         assert_eq!(price, 0u128);
     }
 
     #[test]
     fn correct_price_for_first_share() {
-        let coefficient = Decimal::from_ratio(1u128, 8u128);
         let supply = 0u128;
         let amount = 1u128;
-        let price = price(supply, amount, coefficient).u128();
+        let price = price(supply, amount, coefficient()).u128();
         assert_eq!(price, 0);
     }
 
     #[test]
     fn correct_price_for_second_share() {
-        let coefficient = Decimal::from_ratio(1u128, 8u128);
         let supply = 1u128;
         let amount = 1u128;
-        let price = price(supply, amount, coefficient).u128();
+        let price = price(supply, amount, coefficient()).u128();
         assert_eq!(price, 125_000);
     }
 
     #[test]
     fn correct_price_for_third_share() {
-        let coefficient = Decimal::from_ratio(1u128, 8u128);
         let supply = 2u128;
         let amount = 3u128;
-        let price = price(supply, amount, coefficient).u128();
+        let price = price(supply, amount, coefficient()).u128();
         assert_eq!(price, 3_625_000);
     }
 
     #[test]
     fn proper_initialization() {
         let mut deps = mock_dependencies();
-        let coefficient = Decimal::from_ratio(1u128, 8u128);
 
         let msg = InstantiateMsg {
             protocol_fee_destination: String::from("protocol_fee_destination"),
             protocol_fee_bps: 500,
             subject_fee_bps: 500,
-            curve_coefficient: coefficient,
+            curve_coefficient: coefficient(),
         };
         let info = mock_info("creator", &[]);
 
@@ -426,13 +424,12 @@ mod tests {
     #[test]
     fn buy_and_sell_shares() {
         let mut deps = mock_dependencies();
-        let coefficient = Decimal::from_ratio(1u128, 8u128);
 
         let msg = InstantiateMsg {
             protocol_fee_destination: String::from("protocol_fee_destination"),
             protocol_fee_bps: 500,
             subject_fee_bps: 500,
-            curve_coefficient: coefficient,
+            curve_coefficient: coefficient(),
         };
         let subject = String::from("subject");
 
