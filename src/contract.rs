@@ -121,22 +121,23 @@ pub mod execute {
             |supply| -> Result<_, ContractError> { Ok(supply.unwrap_or_default() + amount) },
         )?;
 
-        let res = if protocol_fee.is_zero() {
-            Response::new()
-        } else {
-            let protocol_fee_msg = BankMsg::Send {
-                to_address: protocol_fee_destination.to_string(),
-                amount: stars(protocol_fee),
-            };
+        let mut res = Response::new();
 
-            let subject_fee_msg = BankMsg::Send {
-                to_address: subject.to_string(),
-                amount: stars(subject_fee),
-            };
-            Response::new()
-                .add_message(protocol_fee_msg)
-                .add_message(subject_fee_msg)
+        let protocol_fee_msg = BankMsg::Send {
+            to_address: protocol_fee_destination.to_string(),
+            amount: stars(protocol_fee),
         };
+
+        let subject_fee_msg = BankMsg::Send {
+            to_address: subject.to_string(),
+            amount: stars(subject_fee),
+        };
+
+        if !protocol_fee.is_zero() {
+            res = res
+                .add_message(protocol_fee_msg)
+                .add_message(subject_fee_msg);
+        }
 
         Ok(res.add_attribute("action", "buy_shares"))
     }
