@@ -1,8 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    coins, to_binary, Binary, Coin, Decimal, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
-    Uint128,
+    coins, to_binary, Addr, Binary, Coin, Decimal, Deps, DepsMut, Env, MessageInfo, Response,
+    StdResult, Storage, Uint128,
 };
 use cw2::set_contract_version;
 use cw_utils::nonpayable;
@@ -10,7 +10,7 @@ use sg_std::NATIVE_DENOM;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{Config, CONFIG};
+use crate::state::{Config, CONFIG, SHARES_SUPPLY};
 
 use self::execute::{buy_shares, sell_shares};
 
@@ -75,13 +75,8 @@ pub mod execute {
         amount: Uint128,
     ) -> Result<Response, ContractError> {
         let subject = deps.api.addr_validate(&subject)?;
-
         let payment = must_pay(&info, NATIVE_DENOM)?.into();
-
-        let supply = SHARES_SUPPLY
-            .may_load(deps.storage, subject.clone())?
-            .unwrap_or_default()
-            .u128();
+        let supply = load_supply(deps.storage, subject.clone())?;
 
         ensure!(
             supply > 0 || subject == info.sender,
@@ -163,11 +158,7 @@ pub mod execute {
         nonpayable(&info)?;
 
         let subject = deps.api.addr_validate(&subject)?;
-
-        let supply = SHARES_SUPPLY
-            .may_load(deps.storage, subject.clone())?
-            .unwrap_or_default()
-            .u128();
+        let supply = load_supply(deps.storage, subject.clone())?;
 
         ensure!(supply > amount, ContractError::LastShare {});
 
@@ -371,6 +362,13 @@ fn price(supply: impl Into<u128>, amount: impl Into<u128>, coefficient: Decimal)
 
 fn stars(amount: impl Into<u128>) -> Vec<Coin> {
     coins(amount.into(), NATIVE_DENOM)
+}
+
+fn load_supply(storage: &dyn Storage, subject: Addr) -> StdResult<u128> {
+    Ok(SHARES_SUPPLY
+        .may_load(storage, subject)?
+        .unwrap_or_default()
+        .u128())
 }
 
 #[cfg(test)]
