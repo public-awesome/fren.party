@@ -14,7 +14,7 @@ use crate::state::{Config, CONFIG};
 
 use self::execute::{buy_shares, sell_shares};
 
-const CONTRACT_NAME: &str = "crates.io:stargaze-shares";
+const CONTRACT_NAME: &str = "crates.io:fren-party";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
