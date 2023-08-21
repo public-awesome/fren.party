@@ -2,6 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     coins, to_binary, Binary, Coin, Decimal, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
+    Uint128,
 };
 use cw2::set_contract_version;
 use cw_utils::nonpayable;
@@ -31,6 +32,7 @@ pub fn instantiate(
         protocol_fee_destination: deps.api.addr_validate(&msg.protocol_fee_destination)?,
         protocol_fee_percent: Decimal::bps(msg.protocol_fee_bps),
         subject_fee_percent: Decimal::bps(msg.subject_fee_bps),
+        curve_coefficient: msg.curve_coefficient,
     };
     CONFIG.save(deps.storage, &config)?;
 
@@ -89,10 +91,11 @@ pub mod execute {
             protocol_fee_destination,
             protocol_fee_percent,
             subject_fee_percent,
+            curve_coefficient,
             ..
         } = CONFIG.load(deps.storage)?;
 
-        let price: Uint128 = price(supply, amount.u128()).into();
+        let price = price(supply, amount, curve_coefficient);
 
         let protocol_fee = price * protocol_fee_percent;
         let subject_fee = price * subject_fee_percent;
@@ -160,10 +163,11 @@ pub mod execute {
             protocol_fee_destination,
             protocol_fee_percent,
             subject_fee_percent,
+            curve_coefficient,
             ..
         } = CONFIG.load(deps.storage)?;
 
-        let price = Uint128::from(price(supply - amount, amount));
+        let price = price(supply - amount, amount, curve_coefficient);
 
         let protocol_fee = price * protocol_fee_percent;
         let subject_fee = price * subject_fee_percent;
@@ -267,16 +271,21 @@ pub mod query {
     }
 
     pub fn buy_price(deps: Deps, subject: String, amount: Uint128) -> StdResult<Coin> {
-        let supply = SHARES_SUPPLY.load(deps.storage, deps.api.addr_validate(&subject)?)?;
-
-        Ok(coin(price(supply.u128(), amount.u128()), NATIVE_DENOM))
-    }
-
-    pub fn sell_price(deps: Deps, subject: String, amount: Uint128) -> StdResult<Coin> {
+        let coefficient = CONFIG.load(deps.storage)?.curve_coefficient;
         let supply = SHARES_SUPPLY.load(deps.storage, deps.api.addr_validate(&subject)?)?;
 
         Ok(coin(
-            price(supply.u128() - amount.u128(), amount.u128()),
+            price(supply, amount, coefficient).u128(),
+            NATIVE_DENOM,
+        ))
+    }
+
+    pub fn sell_price(deps: Deps, subject: String, amount: Uint128) -> StdResult<Coin> {
+        let coefficient = CONFIG.load(deps.storage)?.curve_coefficient;
+        let supply = SHARES_SUPPLY.load(deps.storage, deps.api.addr_validate(&subject)?)?;
+
+        Ok(coin(
+            price(supply - amount, amount, coefficient).u128(),
             NATIVE_DENOM,
         ))
     }
@@ -323,7 +332,10 @@ pub mod query {
 //
 // NOTE: This can panic in debug mode if the supply and amount are both 0.
 // Panic will never occurr in production since the parameters are ensured to be valid.
-fn price(supply: u128, amount: u128) -> u128 {
+fn price(supply: impl Into<u128>, amount: impl Into<u128>, coefficient: Decimal) -> Uint128 {
+    let supply = supply.into();
+    let amount = amount.into();
+
     let sum1 = if supply == 0 {
         0
     } else {
@@ -339,8 +351,8 @@ fn price(supply: u128, amount: u128) -> u128 {
     let summation = sum2 - sum1;
     println!("Summation: {summation}");
 
-    let star = 1_000_000;
-    (summation * star) / 8
+    let star = 1_000_000u128;
+    Uint128::from(summation * star) * coefficient
 }
 
 fn stars(amount: impl Into<u128>) -> Vec<Coin> {
@@ -356,44 +368,50 @@ mod tests {
     #[test]
     #[should_panic]
     fn invalid_price_arguments() {
-        let supply = 0;
-        let amount = 0;
-        let price = price(supply, amount);
-        assert_eq!(price, 0);
+        let coefficient = Decimal::from_ratio(1u128, 8u128);
+        let supply = 0u128;
+        let amount = 0u128;
+        let price = price(supply, amount, coefficient).u128();
+        assert_eq!(price, 0u128);
     }
 
     #[test]
     fn correct_price_for_first_share() {
-        let supply = 0;
-        let amount = 1;
-        let price = price(supply, amount);
+        let coefficient = Decimal::from_ratio(1u128, 8u128);
+        let supply = 0u128;
+        let amount = 1u128;
+        let price = price(supply, amount, coefficient).u128();
         assert_eq!(price, 0);
     }
 
     #[test]
     fn correct_price_for_second_share() {
-        let supply = 1;
-        let amount = 1;
-        let price = price(supply, amount);
+        let coefficient = Decimal::from_ratio(1u128, 8u128);
+        let supply = 1u128;
+        let amount = 1u128;
+        let price = price(supply, amount, coefficient).u128();
         assert_eq!(price, 125_000);
     }
 
     #[test]
     fn correct_price_for_third_share() {
-        let supply = 2;
-        let amount = 3;
-        let price = price(supply, amount);
+        let coefficient = Decimal::from_ratio(1u128, 8u128);
+        let supply = 2u128;
+        let amount = 3u128;
+        let price = price(supply, amount, coefficient).u128();
         assert_eq!(price, 3_625_000);
     }
 
     #[test]
     fn proper_initialization() {
         let mut deps = mock_dependencies();
+        let coefficient = Decimal::from_ratio(1u128, 8u128);
 
         let msg = InstantiateMsg {
             protocol_fee_destination: String::from("protocol_fee_destination"),
             protocol_fee_bps: 500,
             subject_fee_bps: 500,
+            curve_coefficient: coefficient,
         };
         let info = mock_info("creator", &[]);
 
@@ -408,11 +426,13 @@ mod tests {
     #[test]
     fn buy_and_sell_shares() {
         let mut deps = mock_dependencies();
+        let coefficient = Decimal::from_ratio(1u128, 8u128);
 
         let msg = InstantiateMsg {
             protocol_fee_destination: String::from("protocol_fee_destination"),
             protocol_fee_bps: 500,
             subject_fee_bps: 500,
+            curve_coefficient: coefficient,
         };
         let subject = String::from("subject");
 

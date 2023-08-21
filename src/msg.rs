@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Coin, Uint128};
+use cosmwasm_std::{Coin, Decimal, Uint128};
 
 use crate::state::Config;
 
@@ -8,6 +8,7 @@ pub struct InstantiateMsg {
     pub protocol_fee_destination: String,
     pub protocol_fee_bps: u64,
     pub subject_fee_bps: u64,
+    pub curve_coefficient: Decimal,
 }
 
 #[cw_serde]

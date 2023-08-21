@@ -7,6 +7,7 @@ pub struct Config {
     pub protocol_fee_destination: Addr,
     pub protocol_fee_percent: Decimal,
     pub subject_fee_percent: Decimal,
+    pub curve_coefficient: Decimal,
 }
 
 pub const CONFIG: Item<Config> = Item::new("config");
