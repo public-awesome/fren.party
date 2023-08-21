@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Coin, Decimal, Uint128};
+use cosmwasm_std::{Coin, Decimal, Event, Uint128};
 
 use crate::state::Config;
 
@@ -34,4 +34,35 @@ pub enum QueryMsg {
     BuyPriceAfterFee { subject: String, amount: Uint128 },
     #[returns(Coin)]
     SellPriceAfterFee { subject: String, amount: Uint128 },
+}
+
+pub struct TradeEvent {
+    pub trader: String,
+    pub subject: String,
+    pub is_buy: bool,
+    pub share_amount: Uint128,
+    pub stars_amount: Uint128,
+    pub protocol_stars_amount: Uint128,
+    pub subject_stars_amount: Uint128,
+    pub supply: Uint128,
+}
+
+impl From<TradeEvent> for Event {
+    fn from(val: TradeEvent) -> Self {
+        let mut event = Event::new("Trade".to_string());
+
+        event = event.add_attribute("trader", val.trader);
+        event = event.add_attribute("subject", val.subject);
+        event = event.add_attribute("is_buy", val.is_buy.to_string());
+        event = event.add_attribute("share_amount", val.share_amount.to_string());
+        event = event.add_attribute("stars_amount", val.stars_amount.to_string());
+        event = event.add_attribute(
+            "protocol_stars_amount",
+            val.protocol_stars_amount.to_string(),
+        );
+        event = event.add_attribute("subject_stars_amount", val.subject_stars_amount.to_string());
+        event = event.add_attribute("supply", val.supply.to_string());
+
+        event
+    }
 }

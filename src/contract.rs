@@ -61,7 +61,10 @@ pub mod execute {
     use cw_utils::must_pay;
     use sg_std::NATIVE_DENOM;
 
-    use crate::state::{Config, CONFIG, SHARES_BALANCE, SHARES_SUPPLY};
+    use crate::{
+        msg::TradeEvent,
+        state::{Config, CONFIG, SHARES_BALANCE, SHARES_SUPPLY},
+    };
 
     use super::*;
 
@@ -111,7 +114,7 @@ pub mod execute {
 
         SHARES_BALANCE.update(
             deps.storage,
-            (subject.clone(), info.sender),
+            (subject.clone(), info.sender.clone()),
             |balance| -> Result<_, ContractError> { Ok(balance.unwrap_or_default() + amount) },
         )?;
 
@@ -137,10 +140,18 @@ pub mod execute {
                 .add_message(subject_fee_msg);
         }
 
-        Ok(res
-            .add_attribute("action", "buy_shares")
-            .add_attribute("subject", subject)
-            .add_attribute("amount", amount))
+        let trade_event = TradeEvent {
+            trader: info.sender.to_string(),
+            subject: subject.to_string(),
+            is_buy: true,
+            share_amount: amount,
+            stars_amount: price,
+            protocol_stars_amount: protocol_fee,
+            subject_stars_amount: subject_fee,
+            supply: Uint128::from(supply) + amount,
+        };
+
+        Ok(res.add_event(trade_event.into()))
     }
 
     pub fn sell_shares(
@@ -210,10 +221,19 @@ pub mod execute {
             amount: stars(subject_fee),
         };
 
+        let trade_event = TradeEvent {
+            trader: info.sender.to_string(),
+            subject: subject.to_string(),
+            is_buy: false,
+            share_amount: amount,
+            stars_amount: price,
+            protocol_stars_amount: protocol_fee,
+            subject_stars_amount: subject_fee,
+            supply: Uint128::from(supply) - amount,
+        };
+
         Ok(Response::new()
-            .add_attribute("action", "sell_shares")
-            .add_attribute("subject", subject)
-            .add_attribute("amount", amount)
+            .add_event(trade_event.into())
             .add_messages(vec![sender_fee_msg, protocol_fee_msg, subject_fee_msg]))
     }
 }
