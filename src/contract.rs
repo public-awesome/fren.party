@@ -123,17 +123,15 @@ pub mod execute {
 
         let mut res = Response::new();
 
-        let protocol_fee_msg = BankMsg::Send {
-            to_address: protocol_fee_destination.to_string(),
-            amount: stars(protocol_fee),
-        };
-
-        let subject_fee_msg = BankMsg::Send {
-            to_address: subject.to_string(),
-            amount: stars(subject_fee),
-        };
-
         if !protocol_fee.is_zero() {
+            let protocol_fee_msg = BankMsg::Send {
+                to_address: protocol_fee_destination.to_string(),
+                amount: stars(protocol_fee),
+            };
+            let subject_fee_msg = BankMsg::Send {
+                to_address: subject.to_string(),
+                amount: stars(subject_fee),
+            };
             res = res
                 .add_message(protocol_fee_msg)
                 .add_message(subject_fee_msg);
