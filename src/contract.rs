@@ -539,7 +539,7 @@ mod tests {
             mock_env(),
             QueryMsg::SharesBalance {
                 subject: subject.clone(),
-                holder: friend.clone(),
+                holder: friend,
             },
         )
         .unwrap();
