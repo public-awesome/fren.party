@@ -137,7 +137,10 @@ pub mod execute {
                 .add_message(subject_fee_msg);
         }
 
-        Ok(res.add_attribute("action", "buy_shares"))
+        Ok(res
+            .add_attribute("action", "buy_shares")
+            .add_attribute("subject", subject)
+            .add_attribute("amount", amount))
     }
 
     pub fn sell_shares(
@@ -178,20 +181,18 @@ pub mod execute {
             ContractError::NotEnoughShares {}
         );
 
+        let amount = Uint128::from(amount);
+
         SHARES_BALANCE.update(
             deps.storage,
             (subject.clone(), info.sender.clone()),
-            |balance| -> Result<_, ContractError> {
-                Ok(balance.unwrap_or_default() - Uint128::from(amount))
-            },
+            |balance| -> Result<_, ContractError> { Ok(balance.unwrap_or_default() - amount) },
         )?;
 
         SHARES_SUPPLY.update(
             deps.storage,
             subject.clone(),
-            |supply| -> Result<_, ContractError> {
-                Ok(supply.unwrap_or_default() - Uint128::from(amount))
-            },
+            |supply| -> Result<_, ContractError> { Ok(supply.unwrap_or_default() - amount) },
         )?;
 
         let sender_fee_msg = BankMsg::Send {
@@ -211,6 +212,8 @@ pub mod execute {
 
         Ok(Response::new()
             .add_attribute("action", "sell_shares")
+            .add_attribute("subject", subject)
+            .add_attribute("amount", amount)
             .add_messages(vec![sender_fee_msg, protocol_fee_msg, subject_fee_msg]))
     }
 }
