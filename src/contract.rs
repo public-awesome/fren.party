@@ -327,31 +327,25 @@ pub mod query {
     }
 }
 
-// This first share can only be bought by the subject.
-// Price in STARS.
-//
-// NOTE: This can panic in debug mode if the supply and amount are both 0.
-// Panic will never occurr in production since the parameters are ensured to be valid.
+/// Price of shares is based on a cubic polynomial function with a fixed coefficient.
+/// The first share can only be bought by the subject.
 fn price(supply: impl Into<u128>, amount: impl Into<u128>, coefficient: Decimal) -> Uint128 {
-    let supply = supply.into();
-    let amount = amount.into();
+    let (supply, amount) = (supply.into(), amount.into());
 
-    let sum1 = if supply == 0 {
-        0
-    } else {
-        (supply - 1) * (supply) * (2 * (supply - 1) + 1) / 6
-    };
+    let sum = |x: u128| x * (x + 1) * (2 * x + 1) / 6;
+
+    let sum1 = if supply == 0 { 0 } else { sum(supply - 1) };
 
     let sum2 = if supply == 0 && amount == 1 {
         0
     } else {
-        (supply - 1 + amount) * (supply + amount) * (2 * (supply - 1 + amount) + 1) / 6
+        sum(supply + amount - 1)
     };
 
-    let summation = sum2 - sum1;
+    let summation = sum2.wrapping_sub(sum1);
     let star = 1_000_000u128;
 
-    Uint128::from(summation * star) * coefficient
+    Uint128::from(summation.wrapping_mul(star)) * coefficient
 }
 
 fn stars(amount: impl Into<u128>) -> Vec<Coin> {
