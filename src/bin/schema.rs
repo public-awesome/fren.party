@@ -1,6 +1,6 @@
 use cosmwasm_schema::write_api;
 
-use shares::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use fren::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 fn main() {
     write_api! {
