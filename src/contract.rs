@@ -135,16 +135,16 @@ pub mod execute {
                 .add_message(subject_fee_msg);
         }
 
-        let trade_event = TradeEvent {
-            trader: info.sender.to_string(),
-            subject: subject.to_string(),
-            is_buy: true,
-            share_amount: amount,
-            stars_amount: price,
-            protocol_stars_amount: protocol_fee,
-            subject_stars_amount: subject_fee,
-            supply: Uint128::from(supply) + amount,
-        };
+        let trade_event = TradeEvent::new(
+            info.sender.to_string(),
+            subject.to_string(),
+            true,
+            amount,
+            price,
+            protocol_fee,
+            subject_fee,
+            Uint128::from(supply) + amount,
+        );
 
         Ok(res.add_event(trade_event.into()))
     }
@@ -212,16 +212,16 @@ pub mod execute {
             amount: stars(subject_fee),
         };
 
-        let trade_event = TradeEvent {
-            trader: info.sender.to_string(),
-            subject: subject.to_string(),
-            is_buy: false,
-            share_amount: amount,
-            stars_amount: price,
-            protocol_stars_amount: protocol_fee,
-            subject_stars_amount: subject_fee,
-            supply: Uint128::from(supply) - amount,
-        };
+        let trade_event = TradeEvent::new(
+            info.sender.to_string(),
+            subject.to_string(),
+            false,
+            amount,
+            price,
+            protocol_fee,
+            subject_fee,
+            Uint128::from(supply) - amount,
+        );
 
         Ok(Response::new()
             .add_event(trade_event.into())

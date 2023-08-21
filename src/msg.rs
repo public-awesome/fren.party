@@ -46,6 +46,30 @@ pub struct TradeEvent {
     pub subject_stars_amount: Uint128,
     pub supply: Uint128,
 }
+impl TradeEvent {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        trader: String,
+        subject: String,
+        is_buy: bool,
+        share_amount: Uint128,
+        stars_amount: Uint128,
+        protocol_stars_amount: Uint128,
+        subject_stars_amount: Uint128,
+        supply: Uint128,
+    ) -> Self {
+        Self {
+            trader,
+            subject,
+            is_buy,
+            share_amount,
+            stars_amount,
+            protocol_stars_amount,
+            subject_stars_amount,
+            supply,
+        }
+    }
+}
 
 impl From<TradeEvent> for Event {
     fn from(val: TradeEvent) -> Self {
