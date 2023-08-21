@@ -22,8 +22,6 @@ pub enum ContractError {
     #[error("not enough funds: {expected} got {actual}")]
     NotEnoughFunds { expected: u128, actual: u128 },
 
-    #[error("Unauthorized")]
+    #[error("unauthorized")]
     Unauthorized {},
-    // Add any other custom errors you like here.
-    // Look at https://docs.rs/thiserror/1.0.21/thiserror/ for details.
 }

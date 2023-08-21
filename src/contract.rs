@@ -83,7 +83,7 @@ pub mod execute {
         ensure!(
             supply > 0 || subject == info.sender,
             ContractError::NotSubject {
-                subject: subject.into()
+                subject: subject.to_string()
             }
         );
 
