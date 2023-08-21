@@ -475,6 +475,33 @@ mod tests {
         let value: Uint128 = from_binary(&res).unwrap();
         assert_eq!(Uint128::from(1u128), value);
 
+        // check the buy price for friend to buy shares
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::BuyPrice {
+                subject: subject.to_string(),
+                amount: Uint128::from(10u128),
+            },
+        )
+        .unwrap();
+        let value: Coin = from_binary(&res).unwrap();
+        let friend_buy_price = value.amount.u128();
+        assert_eq!(friend_buy_price, 48_125_000u128);
+
+        // check the buy price with fees
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::BuyPriceAfterFee {
+                subject: subject.to_string(),
+                amount: Uint128::from(10u128),
+            },
+        )
+        .unwrap();
+        let value: Coin = from_binary(&res).unwrap();
+        assert_eq!(value.amount.u128(), 52_937_500u128);
+
         // buy the same subject's shares as another friend
         let friend = "friend";
         let info = mock_info(friend, &stars(52_937_500u128));
@@ -517,6 +544,34 @@ mod tests {
         let value: Uint128 = from_binary(&res).unwrap();
         assert_eq!(Uint128::from(11u128), value);
 
+        // check the sell price for the friend
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::SellPrice {
+                subject: subject.to_string(),
+                amount: Uint128::from(10u128),
+            },
+        )
+        .unwrap();
+        let value: Coin = from_binary(&res).unwrap();
+        assert_eq!(value.amount.u128(), friend_buy_price);
+
+        // check the sell price after fees
+        // this is what the shares seller actually gets
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::SellPriceAfterFee {
+                subject: subject.to_string(),
+                amount: Uint128::from(10u128),
+            },
+        )
+        .unwrap();
+        let value: Coin = from_binary(&res).unwrap();
+        let sell_price_after_fees = value.amount.u128();
+        assert_eq!(sell_price_after_fees, 43_312_500u128);
+
         // friend sells shares to be back at the previous state
         let info = mock_info(friend, &[]);
         let msg = ExecuteMsg::SellShares {
@@ -526,13 +581,10 @@ mod tests {
         let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
         assert_eq!(3, res.messages.len());
         // friend lost money on their trade due to fees
-        // TODO: this is not the correct amount, but it's close
-        // let expected_amount = 52_937_500u128 - 2 * 2_406_250u128;
-        let expected_amount = 43_312_500u128;
         assert_eq!(
             CosmosMsg::Bank(BankMsg::Send {
                 to_address: friend.to_string(),
-                amount: stars(expected_amount)
+                amount: stars(sell_price_after_fees)
             }),
             res.messages[0].msg
         );
