@@ -1,8 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    coins, to_binary, Binary, Coin, Coins, Decimal, Deps, DepsMut, Env, MessageInfo, Response,
-    StdResult, Uint128,
+    coins, to_binary, Binary, Coin, Decimal, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
 };
 use cw2::set_contract_version;
 use cw_utils::nonpayable;
@@ -14,8 +13,7 @@ use crate::state::{Config, CONFIG};
 
 use self::execute::{buy_shares, sell_shares};
 
-// version info for migration info
-const CONTRACT_NAME: &str = "crates.io:shares";
+const CONTRACT_NAME: &str = "crates.io:stargaze-shares";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -147,6 +145,8 @@ pub mod execute {
         subject: String,
         amount: u128,
     ) -> Result<Response, ContractError> {
+        nonpayable(&info)?;
+
         let subject = deps.api.addr_validate(&subject)?;
 
         let supply = SHARES_SUPPLY
@@ -227,6 +227,12 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::BuyPriceAfterFee { subject, amount } => {
             to_binary(&query::buy_price_after_fee(deps, subject, amount)?)
         }
+        QueryMsg::SellPrice { subject, amount } => {
+            to_binary(&query::sell_price(deps, subject, amount)?)
+        }
+        QueryMsg::SellPriceAfterFee { subject, amount } => {
+            to_binary(&query::sell_price_after_fee(deps, subject, amount)?)
+        }
     }
 }
 
@@ -266,6 +272,15 @@ pub mod query {
         Ok(coin(price(supply.u128(), amount.u128()), NATIVE_DENOM))
     }
 
+    pub fn sell_price(deps: Deps, subject: String, amount: Uint128) -> StdResult<Coin> {
+        let supply = SHARES_SUPPLY.load(deps.storage, deps.api.addr_validate(&subject)?)?;
+
+        Ok(coin(
+            price(supply.u128() - amount.u128(), amount.u128()),
+            NATIVE_DENOM,
+        ))
+    }
+
     pub fn buy_price_after_fee(deps: Deps, subject: String, amount: Uint128) -> StdResult<Coin> {
         let Config {
             protocol_fee_percent,
@@ -280,6 +295,24 @@ pub mod query {
 
         Ok(coin(
             (price.amount + protocol_fee + subject_fee).into(),
+            NATIVE_DENOM,
+        ))
+    }
+
+    pub fn sell_price_after_fee(deps: Deps, subject: String, amount: Uint128) -> StdResult<Coin> {
+        let Config {
+            protocol_fee_percent,
+            subject_fee_percent,
+            ..
+        } = CONFIG.load(deps.storage)?;
+
+        let price = sell_price(deps, subject, amount)?;
+
+        let protocol_fee = price.amount * protocol_fee_percent;
+        let subject_fee = price.amount * subject_fee_percent;
+
+        Ok(coin(
+            (price.amount - protocol_fee - subject_fee).into(),
             NATIVE_DENOM,
         ))
     }

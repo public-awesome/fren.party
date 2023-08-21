@@ -28,5 +28,9 @@ pub enum QueryMsg {
     #[returns(Coin)]
     BuyPrice { subject: String, amount: Uint128 },
     #[returns(Coin)]
+    SellPrice { subject: String, amount: Uint128 },
+    #[returns(Coin)]
     BuyPriceAfterFee { subject: String, amount: Uint128 },
+    #[returns(Coin)]
+    SellPriceAfterFee { subject: String, amount: Uint128 },
 }
