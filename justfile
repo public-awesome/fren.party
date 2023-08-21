@@ -10,6 +10,7 @@ ts-codegen:
 types: schema
 	cosmwasm-ts-codegen generate \
 		--plugin client \
+		--plugin message-composer \
 		--schema ./schema \
 		--out ./ts \
 		--name FrenParty \
