@@ -1,8 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    coins, to_binary, Addr, Binary, Coin, Decimal, Deps, DepsMut, Env, MessageInfo, Response,
-    StdResult, Storage, Uint128,
+    coins, to_binary, Addr, BankMsg, Binary, Coin, Decimal, Deps, DepsMut, Env, MessageInfo,
+    Response, StdResult, Storage, Uint128,
 };
 use cw2::set_contract_version;
 use cw_utils::nonpayable;
@@ -57,7 +57,7 @@ pub fn execute(
 }
 
 pub mod execute {
-    use cosmwasm_std::{ensure, BankMsg, Uint128};
+    use cosmwasm_std::{ensure, Uint128};
     use cw_utils::must_pay;
     use sg_std::NATIVE_DENOM;
 
@@ -122,14 +122,8 @@ pub mod execute {
         let mut res = Response::new();
 
         if !protocol_fee.is_zero() {
-            let protocol_fee_msg = BankMsg::Send {
-                to_address: protocol_fee_destination.to_string(),
-                amount: stars(protocol_fee),
-            };
-            let subject_fee_msg = BankMsg::Send {
-                to_address: subject.to_string(),
-                amount: stars(subject_fee),
-            };
+            let protocol_fee_msg = send_msg(&protocol_fee_destination, protocol_fee);
+            let subject_fee_msg = send_msg(&subject, subject_fee);
             res = res
                 .add_message(protocol_fee_msg)
                 .add_message(subject_fee_msg);
@@ -197,20 +191,9 @@ pub mod execute {
             |supply| -> Result<_, ContractError> { Ok(supply.unwrap_or_default() - amount) },
         )?;
 
-        let sender_fee_msg = BankMsg::Send {
-            to_address: info.sender.to_string(),
-            amount: stars(price - protocol_fee - subject_fee),
-        };
-
-        let protocol_fee_msg = BankMsg::Send {
-            to_address: protocol_fee_destination.to_string(),
-            amount: stars(protocol_fee),
-        };
-
-        let subject_fee_msg = BankMsg::Send {
-            to_address: subject.to_string(),
-            amount: stars(subject_fee),
-        };
+        let sender_fee_msg = send_msg(&info.sender, price - protocol_fee - subject_fee);
+        let protocol_fee_msg = send_msg(&protocol_fee_destination, protocol_fee);
+        let subject_fee_msg = send_msg(&subject, subject_fee);
 
         let trade_event = TradeEvent::new(
             info.sender.to_string(),
@@ -369,6 +352,13 @@ fn load_supply(storage: &dyn Storage, subject: Addr) -> StdResult<u128> {
         .may_load(storage, subject)?
         .unwrap_or_default()
         .u128())
+}
+
+fn send_msg(to_address: &Addr, amount: impl Into<u128>) -> BankMsg {
+    BankMsg::Send {
+        to_address: to_address.to_string(),
+        amount: stars(amount),
+    }
 }
 
 #[cfg(test)]
