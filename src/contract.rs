@@ -73,7 +73,7 @@ pub mod execute {
     ) -> Result<Response, ContractError> {
         let subject = deps.api.addr_validate(&subject)?;
 
-        let payment = must_pay(&info, NATIVE_DENOM)?.u128();
+        let payment = must_pay(&info, NATIVE_DENOM)?.into();
 
         let supply = SHARES_SUPPLY
             .may_load(deps.storage, subject.clone())?
@@ -275,7 +275,7 @@ pub mod query {
         let supply = SHARES_SUPPLY.load(deps.storage, deps.api.addr_validate(&subject)?)?;
 
         Ok(coin(
-            price(supply, amount, coefficient).u128(),
+            price(supply, amount, coefficient).into(),
             NATIVE_DENOM,
         ))
     }
@@ -285,7 +285,7 @@ pub mod query {
         let supply = SHARES_SUPPLY.load(deps.storage, deps.api.addr_validate(&subject)?)?;
 
         Ok(coin(
-            price(supply - amount, amount, coefficient).u128(),
+            price(supply - amount, amount, coefficient).into(),
             NATIVE_DENOM,
         ))
     }
@@ -400,7 +400,7 @@ mod tests {
         let mut deps = mock_dependencies();
 
         let msg = InstantiateMsg {
-            protocol_fee_destination: String::from("protocol_fee_destination"),
+            protocol_fee_destination: "protocol_fee_destination".to_string(),
             protocol_fee_bps: 500,
             subject_fee_bps: 500,
             curve_coefficient: coefficient(),
@@ -418,34 +418,36 @@ mod tests {
     #[test]
     fn buy_and_sell_shares() {
         let mut deps = mock_dependencies();
+        let protocol_fee_destination = "protocol_fee_destination";
 
         let msg = InstantiateMsg {
-            protocol_fee_destination: String::from("protocol_fee_destination"),
+            protocol_fee_destination: protocol_fee_destination.to_string(),
             protocol_fee_bps: 500,
             subject_fee_bps: 500,
             curve_coefficient: coefficient(),
         };
-        let subject = String::from("subject");
 
-        let info = mock_info(&subject, &[]);
+        let subject = "subject";
+
+        let info = mock_info(subject, &[]);
         let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
         let info = mock_info("anyone", &stars(2u128));
         let msg = ExecuteMsg::BuyShares {
-            subject: String::from("subject"),
+            subject: subject.to_string(),
             amount: Uint128::from(1u128),
         };
         let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
         assert_eq!(
             err,
             ContractError::NotSubject {
-                subject: subject.clone()
+                subject: subject.to_string()
             }
         );
 
-        let info = mock_info(&subject, &stars(2u128));
+        let info = mock_info(subject, &stars(2u128));
         let msg = ExecuteMsg::BuyShares {
-            subject: String::from("subject"),
+            subject: subject.to_string(),
             amount: Uint128::from(1u128),
         };
         let _res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
@@ -455,8 +457,8 @@ mod tests {
             deps.as_ref(),
             mock_env(),
             QueryMsg::SharesBalance {
-                subject: subject.clone(),
-                holder: subject.clone(),
+                subject: subject.to_string(),
+                holder: subject.to_string(),
             },
         )
         .unwrap();
@@ -468,7 +470,7 @@ mod tests {
             deps.as_ref(),
             mock_env(),
             QueryMsg::SharesSupply {
-                subject: subject.clone(),
+                subject: subject.to_string(),
             },
         )
         .unwrap();
@@ -476,17 +478,17 @@ mod tests {
         assert_eq!(Uint128::from(1u128), value);
 
         // buy the same subject's shares as another friend
-        let friend = String::from("friend");
-        let info = mock_info(&friend, &stars(52_937_500u128));
+        let friend = "friend";
+        let info = mock_info(friend, &stars(52_937_500u128));
         let msg = ExecuteMsg::BuyShares {
-            subject: String::from("subject"),
+            subject: subject.to_string(),
             amount: Uint128::from(10u128),
         };
         let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
         assert_eq!(2, res.messages.len());
         assert_eq!(
             CosmosMsg::Bank(BankMsg::Send {
-                to_address: String::from("protocol_fee_destination"),
+                to_address: protocol_fee_destination.to_string(),
                 amount: stars(2_406_250u128)
             }),
             res.messages[0].msg
@@ -497,8 +499,8 @@ mod tests {
             deps.as_ref(),
             mock_env(),
             QueryMsg::SharesBalance {
-                subject: subject.clone(),
-                holder: friend.clone(),
+                subject: subject.to_string(),
+                holder: friend.to_string(),
             },
         )
         .unwrap();
@@ -510,7 +512,7 @@ mod tests {
             deps.as_ref(),
             mock_env(),
             QueryMsg::SharesSupply {
-                subject: subject.clone(),
+                subject: subject.to_string(),
             },
         )
         .unwrap();
@@ -518,9 +520,9 @@ mod tests {
         assert_eq!(Uint128::from(11u128), value);
 
         // friend sells shares to be back at the previous state
-        let info = mock_info(&friend, &[]);
+        let info = mock_info(friend, &[]);
         let msg = ExecuteMsg::SellShares {
-            subject: String::from("subject"),
+            subject: subject.to_string(),
             amount: Uint128::from(10u128),
         };
         let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
@@ -531,14 +533,14 @@ mod tests {
         let expected_amount = 43_312_500u128;
         assert_eq!(
             CosmosMsg::Bank(BankMsg::Send {
-                to_address: String::from("friend"),
+                to_address: friend.to_string(),
                 amount: stars(expected_amount)
             }),
             res.messages[0].msg
         );
         assert_eq!(
             CosmosMsg::Bank(BankMsg::Send {
-                to_address: String::from("protocol_fee_destination"),
+                to_address: protocol_fee_destination.to_string(),
                 amount: stars(2_406_250u128)
             }),
             res.messages[1].msg
@@ -549,8 +551,8 @@ mod tests {
             deps.as_ref(),
             mock_env(),
             QueryMsg::SharesBalance {
-                subject: subject.clone(),
-                holder: friend,
+                subject: subject.to_string(),
+                holder: friend.to_string(),
             },
         )
         .unwrap();
@@ -561,7 +563,9 @@ mod tests {
         let res = query(
             deps.as_ref(),
             mock_env(),
-            QueryMsg::SharesSupply { subject },
+            QueryMsg::SharesSupply {
+                subject: subject.to_string(),
+            },
         )
         .unwrap();
         let value: Uint128 = from_binary(&res).unwrap();
