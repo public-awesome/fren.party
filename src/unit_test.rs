@@ -1,10 +1,11 @@
-use crate::contract::{execute, instantiate, price, query, stars};
+use crate::contract::{execute, instantiate, price, query};
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::Config;
 
 use super::*;
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
 use cosmwasm_std::{from_binary, BankMsg, Coin, CosmosMsg, Decimal, Uint128};
+use sg_std::stars;
 
 fn coefficient() -> Decimal {
     Decimal::from_ratio(1u128, 8u128)

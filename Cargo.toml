@@ -48,7 +48,7 @@ cw2              = "1.0.1"
 cw-utils         = "1.0.1"
 schemars         = "0.8.10"
 serde            = { version = "1.0.145", default-features = false, features = ["derive"] }
-sg-std           = { version = "3.1.0" }
+sg-std           = { version = "3.2.0" }
 thiserror        = { version = "1.0.31" }
 
 [dev-dependencies]

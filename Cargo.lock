@@ -691,9 +691,9 @@ dependencies = [
 
 [[package]]
 name = "sg-std"
-version = "3.1.0"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "171f97d3032b7d713dd16decaed06479e7ce5585147f387860ad2fb3f7b9ed94"
+checksum = "4db53aebc2b4f981dc20a51213544adde8beaace6880345627f4babe2e1bc3ab"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",

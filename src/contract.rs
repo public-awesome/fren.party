@@ -5,12 +5,10 @@ use crate::state::{Config, CONFIG};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    coin, coins, to_binary, Addr, BankMsg, Binary, Coin, Decimal, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult, Uint128,
+    to_binary, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Uint128,
 };
 use cw2::set_contract_version;
 use cw_utils::nonpayable;
-use sg_std::NATIVE_DENOM;
 
 const CONTRACT_NAME: &str = "crates.io:fren-party";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -62,7 +60,7 @@ pub mod execute {
     };
     use cosmwasm_std::{ensure, Uint128};
     use cw_utils::must_pay;
-    use sg_std::NATIVE_DENOM;
+    use sg_std::{send_msg, NATIVE_DENOM};
 
     pub fn buy_shares(
         deps: DepsMut,
@@ -211,6 +209,7 @@ pub mod query {
     use super::*;
     use crate::state::{SHARES_BALANCE, SHARES_SUPPLY};
     use cosmwasm_std::{Coin, Uint128};
+    use sg_std::star;
 
     pub fn shares_balance(deps: Deps, subject: String, holder: String) -> StdResult<Uint128> {
         let balance = SHARES_BALANCE
@@ -298,22 +297,4 @@ pub fn price(supply: impl Into<u128>, amount: impl Into<u128>, coefficient: Deci
     let star = 1_000_000u128;
 
     Uint128::from(summation.wrapping_mul(star)) * coefficient
-}
-
-// TODO: update https://github.com/public-awesome/core/pull/17
-pub fn stars(amount: impl Into<u128>) -> Vec<Coin> {
-    coins(amount.into(), NATIVE_DENOM)
-}
-
-// TODO: update https://github.com/public-awesome/core/pull/17
-fn star(amount: impl Into<u128>) -> Coin {
-    coin(amount.into(), NATIVE_DENOM)
-}
-
-// TODO: update https://github.com/public-awesome/core/pull/17
-fn send_msg(to_address: &Addr, amount: impl Into<u128>) -> BankMsg {
-    BankMsg::Send {
-        to_address: to_address.to_string(),
-        amount: stars(amount),
-    }
 }
