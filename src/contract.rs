@@ -128,8 +128,8 @@ pub mod execute {
         }
 
         let trade_event = TradeEvent::new(
-            info.sender.to_string(),
-            subject.to_string(),
+            info.sender,
+            subject,
             true,
             amount,
             price,
@@ -192,8 +192,8 @@ pub mod execute {
         let subject_fee_msg = send_msg(&subject, subject_fee);
 
         let trade_event = TradeEvent::new(
-            info.sender.to_string(),
-            subject.to_string(),
+            info.sender,
+            subject,
             false,
             amount,
             price,
