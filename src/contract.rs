@@ -300,14 +300,17 @@ pub fn price(supply: impl Into<u128>, amount: impl Into<u128>, coefficient: Deci
     Uint128::from(summation.wrapping_mul(star)) * coefficient
 }
 
+// TODO: update https://github.com/public-awesome/core/pull/17
 pub fn stars(amount: impl Into<u128>) -> Vec<Coin> {
     coins(amount.into(), NATIVE_DENOM)
 }
 
+// TODO: update https://github.com/public-awesome/core/pull/17
 fn star(amount: impl Into<u128>) -> Coin {
     coin(amount.into(), NATIVE_DENOM)
 }
 
+// TODO: update https://github.com/public-awesome/core/pull/17
 fn send_msg(to_address: &Addr, amount: impl Into<u128>) -> BankMsg {
     BankMsg::Send {
         to_address: to_address.to_string(),
