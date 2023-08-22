@@ -110,14 +110,12 @@ pub mod execute {
         SHARES_BALANCE.update(
             deps.storage,
             (subject.clone(), info.sender.clone()),
-            |balance| -> Result<_, ContractError> { Ok(balance.unwrap_or_default() + amount) },
+            |balance| -> StdResult<_> { Ok(balance.unwrap_or_default() + amount) },
         )?;
 
-        SHARES_SUPPLY.update(
-            deps.storage,
-            subject.clone(),
-            |supply| -> Result<_, ContractError> { Ok(supply.unwrap_or_default() + amount) },
-        )?;
+        SHARES_SUPPLY.update(deps.storage, subject.clone(), |supply| -> StdResult<_> {
+            Ok(supply.unwrap_or_default() + amount)
+        })?;
 
         let mut res = Response::new();
 
@@ -182,14 +180,12 @@ pub mod execute {
         SHARES_BALANCE.update(
             deps.storage,
             (subject.clone(), info.sender.clone()),
-            |balance| -> Result<_, ContractError> { Ok(balance.unwrap_or_default() - amount) },
+            |balance| -> StdResult<_> { Ok(balance.unwrap_or_default().checked_sub(amount)?) },
         )?;
 
-        SHARES_SUPPLY.update(
-            deps.storage,
-            subject.clone(),
-            |supply| -> Result<_, ContractError> { Ok(supply.unwrap_or_default() - amount) },
-        )?;
+        SHARES_SUPPLY.update(deps.storage, subject.clone(), |supply| -> StdResult<_> {
+            Ok(supply.unwrap_or_default().checked_sub(amount)?)
+        })?;
 
         let sender_fee_msg = send_msg(&info.sender, price - protocol_fee - subject_fee);
         let protocol_fee_msg = send_msg(&protocol_fee_destination, protocol_fee);
