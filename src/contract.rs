@@ -1,12 +1,12 @@
 use self::execute::{buy_shares, sell_shares};
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{Config, CONFIG, SHARES_SUPPLY};
+use crate::state::{Config, CONFIG};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     coin, coins, to_binary, Addr, BankMsg, Binary, Coin, Decimal, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult, Storage, Uint128,
+    Response, StdResult, Uint128,
 };
 use cw2::set_contract_version;
 use cw_utils::nonpayable;
@@ -58,7 +58,7 @@ pub mod execute {
     use super::*;
     use crate::{
         msg::TradeEvent,
-        state::{Config, CONFIG, SHARES_BALANCE, SHARES_SUPPLY},
+        state::{decrement_shares, increment_shares, load_supply, Config, CONFIG, SHARES_BALANCE},
     };
     use cosmwasm_std::{ensure, Uint128};
     use cw_utils::must_pay;
@@ -102,15 +102,7 @@ pub mod execute {
             }
         );
 
-        SHARES_BALANCE.update(
-            deps.storage,
-            (subject.clone(), info.sender.clone()),
-            |balance| -> StdResult<_> { Ok(balance.unwrap_or_default() + amount) },
-        )?;
-
-        SHARES_SUPPLY.update(deps.storage, subject.clone(), |supply| -> StdResult<_> {
-            Ok(supply.unwrap_or_default() + amount)
-        })?;
+        increment_shares(deps.storage, subject.clone(), info.sender.clone(), amount)?;
 
         let mut res = Response::new();
 
@@ -167,17 +159,7 @@ pub mod execute {
             ContractError::NotEnoughShares {}
         );
 
-        let amount = Uint128::from(amount);
-
-        SHARES_BALANCE.update(
-            deps.storage,
-            (subject.clone(), info.sender.clone()),
-            |balance| -> StdResult<_> { Ok(balance.unwrap_or_default().checked_sub(amount)?) },
-        )?;
-
-        SHARES_SUPPLY.update(deps.storage, subject.clone(), |supply| -> StdResult<_> {
-            Ok(supply.unwrap_or_default().checked_sub(amount)?)
-        })?;
+        decrement_shares(deps.storage, subject.clone(), info.sender.clone(), amount)?;
 
         let sender_fee_msg = send_msg(&info.sender, price - protocol_fee - subject_fee);
         let protocol_fee_msg = send_msg(&protocol_fee_destination, protocol_fee);
@@ -191,7 +173,7 @@ pub mod execute {
             price,
             protocol_fee,
             subject_fee,
-            supply - amount.u128(),
+            supply - amount,
         );
 
         Ok(Response::new().add_event(event.into()).add_messages(vec![
@@ -324,13 +306,6 @@ fn star(amount: impl Into<u128>) -> Coin {
 
 fn stars(amount: impl Into<u128>) -> Vec<Coin> {
     coins(amount.into(), NATIVE_DENOM)
-}
-
-fn load_supply(storage: &dyn Storage, subject: Addr) -> StdResult<u128> {
-    Ok(SHARES_SUPPLY
-        .may_load(storage, subject)?
-        .unwrap_or_default()
-        .u128())
 }
 
 fn send_msg(to_address: &Addr, amount: impl Into<u128>) -> BankMsg {
