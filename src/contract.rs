@@ -1,18 +1,16 @@
+use self::execute::{buy_shares, sell_shares};
+use crate::error::ContractError;
+use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use crate::state::{Config, CONFIG, SHARES_SUPPLY};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    coins, to_binary, Addr, BankMsg, Binary, Coin, Decimal, Deps, DepsMut, Env, MessageInfo,
+    coin, coins, to_binary, Addr, BankMsg, Binary, Coin, Decimal, Deps, DepsMut, Env, MessageInfo,
     Response, StdResult, Storage, Uint128,
 };
 use cw2::set_contract_version;
 use cw_utils::nonpayable;
 use sg_std::NATIVE_DENOM;
-
-use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{Config, CONFIG, SHARES_SUPPLY};
-
-use self::execute::{buy_shares, sell_shares};
 
 const CONTRACT_NAME: &str = "crates.io:fren-party";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -57,16 +55,14 @@ pub fn execute(
 }
 
 pub mod execute {
-    use cosmwasm_std::{ensure, Uint128};
-    use cw_utils::must_pay;
-    use sg_std::NATIVE_DENOM;
-
+    use super::*;
     use crate::{
         msg::TradeEvent,
         state::{Config, CONFIG, SHARES_BALANCE, SHARES_SUPPLY},
     };
-
-    use super::*;
+    use cosmwasm_std::{ensure, Uint128};
+    use cw_utils::must_pay;
+    use sg_std::NATIVE_DENOM;
 
     pub fn buy_shares(
         deps: DepsMut,
@@ -90,7 +86,6 @@ pub mod execute {
             protocol_fee_percent,
             subject_fee_percent,
             curve_coefficient,
-            ..
         } = CONFIG.load(deps.storage)?;
 
         let price = price(supply, amount, curve_coefficient);
@@ -122,9 +117,7 @@ pub mod execute {
         if !protocol_fee.is_zero() {
             let protocol_fee_msg = send_msg(&protocol_fee_destination, protocol_fee);
             let subject_fee_msg = send_msg(&subject, subject_fee);
-            res = res
-                .add_message(protocol_fee_msg)
-                .add_message(subject_fee_msg);
+            res = res.add_messages(vec![protocol_fee_msg, subject_fee_msg]);
         }
 
         let event = TradeEvent::new(
@@ -159,7 +152,6 @@ pub mod execute {
             protocol_fee_percent,
             subject_fee_percent,
             curve_coefficient,
-            ..
         } = CONFIG.load(deps.storage)?;
 
         let price = price(supply - amount, amount, curve_coefficient);
@@ -234,12 +226,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 }
 
 pub mod query {
-    use cosmwasm_std::{coin, Coin, Uint128};
-    use sg_std::NATIVE_DENOM;
-
-    use crate::state::{SHARES_BALANCE, SHARES_SUPPLY};
-
     use super::*;
+    use crate::state::{SHARES_BALANCE, SHARES_SUPPLY};
+    use cosmwasm_std::{Coin, Uint128};
 
     pub fn shares_balance(deps: Deps, subject: String, holder: String) -> StdResult<Uint128> {
         let balance = SHARES_BALANCE
@@ -267,20 +256,14 @@ pub mod query {
         let coefficient = CONFIG.load(deps.storage)?.curve_coefficient;
         let supply = SHARES_SUPPLY.load(deps.storage, deps.api.addr_validate(&subject)?)?;
 
-        Ok(coin(
-            price(supply, amount, coefficient).into(),
-            NATIVE_DENOM,
-        ))
+        Ok(star(price(supply, amount, coefficient)))
     }
 
     pub fn sell_price(deps: Deps, subject: String, amount: Uint128) -> StdResult<Coin> {
         let coefficient = CONFIG.load(deps.storage)?.curve_coefficient;
         let supply = SHARES_SUPPLY.load(deps.storage, deps.api.addr_validate(&subject)?)?;
 
-        Ok(coin(
-            price(supply - amount, amount, coefficient).into(),
-            NATIVE_DENOM,
-        ))
+        Ok(star(price(supply - amount, amount, coefficient)))
     }
 
     pub fn buy_price_after_fee(deps: Deps, subject: String, amount: Uint128) -> StdResult<Coin> {
@@ -295,10 +278,7 @@ pub mod query {
         let protocol_fee = price.amount * protocol_fee_percent;
         let subject_fee = price.amount * subject_fee_percent;
 
-        Ok(coin(
-            (price.amount + protocol_fee + subject_fee).into(),
-            NATIVE_DENOM,
-        ))
+        Ok(star(price.amount + protocol_fee + subject_fee))
     }
 
     pub fn sell_price_after_fee(deps: Deps, subject: String, amount: Uint128) -> StdResult<Coin> {
@@ -313,10 +293,7 @@ pub mod query {
         let protocol_fee = price.amount * protocol_fee_percent;
         let subject_fee = price.amount * subject_fee_percent;
 
-        Ok(coin(
-            (price.amount - protocol_fee - subject_fee).into(),
-            NATIVE_DENOM,
-        ))
+        Ok(star(price.amount - protocol_fee - subject_fee))
     }
 }
 
@@ -339,6 +316,10 @@ fn price(supply: impl Into<u128>, amount: impl Into<u128>, coefficient: Decimal)
     let star = 1_000_000u128;
 
     Uint128::from(summation.wrapping_mul(star)) * coefficient
+}
+
+fn star(amount: impl Into<u128>) -> Coin {
+    coin(amount.into(), NATIVE_DENOM)
 }
 
 fn stars(amount: impl Into<u128>) -> Vec<Coin> {
