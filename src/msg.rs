@@ -44,7 +44,7 @@ pub struct TradeEvent {
     pub stars_amount: Uint128,
     pub protocol_stars_amount: Uint128,
     pub subject_stars_amount: Uint128,
-    pub supply: Uint128,
+    pub supply: u128,
 }
 impl TradeEvent {
     #[allow(clippy::too_many_arguments)]
@@ -56,7 +56,7 @@ impl TradeEvent {
         stars_amount: Uint128,
         protocol_stars_amount: Uint128,
         subject_stars_amount: Uint128,
-        supply: Uint128,
+        supply: u128,
     ) -> Self {
         Self {
             trader: trader.into(),

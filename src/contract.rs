@@ -127,7 +127,7 @@ pub mod execute {
                 .add_message(subject_fee_msg);
         }
 
-        let trade_event = TradeEvent::new(
+        let event = TradeEvent::new(
             info.sender,
             subject,
             true,
@@ -135,10 +135,10 @@ pub mod execute {
             price,
             protocol_fee,
             subject_fee,
-            Uint128::from(supply) + amount,
+            supply + amount.u128(),
         );
 
-        Ok(res.add_event(trade_event.into()))
+        Ok(res.add_event(event.into()))
     }
 
     pub fn sell_shares(
@@ -191,7 +191,7 @@ pub mod execute {
         let protocol_fee_msg = send_msg(&protocol_fee_destination, protocol_fee);
         let subject_fee_msg = send_msg(&subject, subject_fee);
 
-        let trade_event = TradeEvent::new(
+        let event = TradeEvent::new(
             info.sender,
             subject,
             false,
@@ -199,12 +199,14 @@ pub mod execute {
             price,
             protocol_fee,
             subject_fee,
-            Uint128::from(supply) - amount,
+            supply - amount.u128(),
         );
 
-        Ok(Response::new()
-            .add_event(trade_event.into())
-            .add_messages(vec![sender_fee_msg, protocol_fee_msg, subject_fee_msg]))
+        Ok(Response::new().add_event(event.into()).add_messages(vec![
+            sender_fee_msg,
+            protocol_fee_msg,
+            subject_fee_msg,
+        ]))
     }
 }
 
