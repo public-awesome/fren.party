@@ -73,20 +73,18 @@ impl TradeEvent {
 
 impl From<TradeEvent> for Event {
     fn from(val: TradeEvent) -> Self {
-        let mut event = Event::new("Trade".to_string());
-
-        event = event.add_attribute("trader", val.trader);
-        event = event.add_attribute("subject", val.subject);
-        event = event.add_attribute("is_buy", val.is_buy.to_string());
-        event = event.add_attribute("share_amount", val.share_amount.to_string());
-        event = event.add_attribute("stars_amount", val.stars_amount.to_string());
-        event = event.add_attribute(
-            "protocol_stars_amount",
-            val.protocol_stars_amount.to_string(),
-        );
-        event = event.add_attribute("subject_stars_amount", val.subject_stars_amount.to_string());
-        event = event.add_attribute("supply", val.supply.to_string());
-
-        event
+        Event::new("Trade".to_string()).add_attributes(vec![
+            ("trader", val.trader),
+            ("subject", val.subject),
+            ("is_buy", val.is_buy.to_string()),
+            ("share_amount", val.share_amount.to_string()),
+            ("stars_amount", val.stars_amount.to_string()),
+            (
+                "protocol_stars_amount",
+                val.protocol_stars_amount.to_string(),
+            ),
+            ("subject_stars_amount", val.subject_stars_amount.to_string()),
+            ("supply", val.supply.to_string()),
+        ])
     }
 }
